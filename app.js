@@ -90,7 +90,8 @@ class ScoutGame {
             notice: document.getElementById('noticeModal'),
             block: document.getElementById('blockModal'),
             spectator: document.getElementById('spectatorModal'),
-            resumeSession: document.getElementById('resumeSessionModal')
+            resumeSession: document.getElementById('resumeSessionModal'),
+            exitMatch: document.getElementById('exitMatchModal')
         };
 
         this.dom = {
@@ -157,7 +158,13 @@ class ScoutGame {
             hostWaitingAttemptText: document.getElementById('hostWaitingAttemptText'),
             btnHostWaitingExit: document.getElementById('btnHostWaitingExit'),
             btnResumeContinue: document.getElementById('btnResumeContinue'),
-            btnResumeDiscard: document.getElementById('btnResumeDiscard')
+            btnResumeDiscard: document.getElementById('btnResumeDiscard'),
+
+            // Maçtan Ayrılma Elemanları
+            btnExitMatch: document.getElementById('btnExitMatch'),
+            btnConfirmExitMatch: document.getElementById('btnConfirmExitMatch'),
+            btnCancelExitMatch: document.getElementById('btnCancelExitMatch'),
+            exitMatchDesc: document.getElementById('exitMatchDesc')
         };
     }
 
@@ -196,6 +203,7 @@ class ScoutGame {
 
         // --- 2. HOST ONAY BUTONU ---
         document.getElementById('btnConfirmHost').addEventListener('click', () => {
+            this.clearLiveSessionSnapshot();
             const hostName = document.getElementById('hostTeamNameInput').value.trim() || 'Dharma';
             this.teams.teamA.name = hostName;
             this.myTeamKey = 'teamA';
@@ -215,6 +223,7 @@ class ScoutGame {
 
         // --- 3. JOIN ONAY BUTONU ---
         document.getElementById('btnConfirmJoin').addEventListener('click', () => {
+            this.clearLiveSessionSnapshot();
             const code = document.getElementById('joinRoomCodeInput').value.trim();
             const joinName = document.getElementById('joinTeamNameInput').value.trim() || 'The Hunters';
 
@@ -240,6 +249,7 @@ class ScoutGame {
 
         // --- 4. YEREL 2 KİŞİ ONAY BUTONU ---
         document.getElementById('btnConfirmLocal').addEventListener('click', () => {
+            this.clearLiveSessionSnapshot();
             const nameA = document.getElementById('localTeamANameInput').value.trim() || 'Dharma';
             const nameB = document.getElementById('localTeamBNameInput').value.trim() || 'The Hunters';
 
@@ -417,6 +427,32 @@ class ScoutGame {
             }
         });
 
+        // --- 9. MAÇTAN AYRILMA BUTONU VE MODALI ---
+        if (this.dom.btnExitMatch) {
+            this.dom.btnExitMatch.addEventListener('click', () => {
+                if (this.gameMode === 'online' && multiplayer.isHost) {
+                    this.dom.exitMatchDesc.innerHTML = 'Maçtan ayrılmak istediğinize emin misiniz?<br><strong>Ev sahibi</strong> olarak ayrılırsanız oda tamamen kapatılacak ve diğer oyuncu bilgilendirilecektir.';
+                } else if (this.gameMode === 'online' && !multiplayer.isHost) {
+                    this.dom.exitMatchDesc.innerHTML = 'Maçtan ayrılmak istediğinize emin misiniz?<br>Maçı terk ederseniz oda sonlandırılacak ve ana menüye dönülecektir.';
+                } else {
+                    this.dom.exitMatchDesc.innerHTML = 'Yerel maçtan ayrılıp ana menüye dönmek istediğinize emin misiniz?';
+                }
+                this.modals.exitMatch.classList.add('active');
+            });
+        }
+
+        if (this.dom.btnCancelExitMatch) {
+            this.dom.btnCancelExitMatch.addEventListener('click', () => {
+                this.modals.exitMatch.classList.remove('active');
+            });
+        }
+
+        if (this.dom.btnConfirmExitMatch) {
+            this.dom.btnConfirmExitMatch.addEventListener('click', () => {
+                this.abandonMatch();
+            });
+        }
+
         // Klavye ile ESC tuşuna basınca açık modalları kapat
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -434,6 +470,9 @@ class ScoutGame {
                 }
                 if (this.modals.spectator && this.modals.spectator.classList.contains('active')) {
                     this.modals.spectator.classList.remove('active');
+                }
+                if (this.modals.exitMatch && this.modals.exitMatch.classList.contains('active')) {
+                    this.modals.exitMatch.classList.remove('active');
                 }
             }
         });
@@ -670,6 +709,22 @@ class ScoutGame {
             if (this.dom.hostWaitingAttemptText) {
                 this.dom.hostWaitingAttemptText.textContent = 'Bağlandı! Maç senkronize ediliyor...';
             }
+        });
+
+        // Rakip Oyuncu Maçtan Ayrıldı
+        multiplayer.on('MATCH_ABANDONED', (payload) => {
+            this.clearLiveSessionSnapshot();
+            Object.values(this.modals).forEach(m => m && m.classList.remove('active'));
+            if (this.dom.hostWaitingOverlay) {
+                this.dom.hostWaitingOverlay.classList.remove('active');
+            }
+            multiplayer.disconnect();
+            this.switchScreen('mainMenu');
+            this.showNotice(
+                'MAÇ SONLANDIRILDI',
+                `⚠️ <strong>${payload.teamName || 'Rakip oyuncu'}</strong> maçtan ayrıldı.<br><br>Oda kapatıldı ve ana menüye yönlendirildiniz.`,
+                '🚪'
+            );
         });
     }
 
@@ -1501,6 +1556,9 @@ class ScoutGame {
         }
 
         this.clearLiveSessionSnapshot();
+        if (this.gameMode === 'online' && multiplayer.isHost && multiplayer.roomCode) {
+            multiplayer.unregisterRoom(multiplayer.roomCode);
+        }
         this.modals.winner.classList.add('active');
     }
 
@@ -1643,6 +1701,9 @@ class ScoutGame {
 
     discardLiveSession() {
         this.clearLiveSessionSnapshot();
+        if (multiplayer.isHost && multiplayer.roomCode) {
+            multiplayer.unregisterRoom(multiplayer.roomCode);
+        }
         if (this.modals.resumeSession) {
             this.modals.resumeSession.classList.remove('active');
         }
@@ -1651,6 +1712,28 @@ class ScoutGame {
         }
         multiplayer.disconnect();
         this.switchScreen('mainMenu');
+    }
+
+    abandonMatch() {
+        if (this.gameMode === 'online') {
+            multiplayer.send('MATCH_ABANDONED', {
+                by: multiplayer.isHost ? 'host' : 'guest',
+                teamName: this.teams[this.myTeamKey] ? this.teams[this.myTeamKey].name : 'Oyuncu'
+            });
+
+            if (multiplayer.isHost && multiplayer.roomCode) {
+                multiplayer.unregisterRoom(multiplayer.roomCode);
+            }
+        }
+
+        this.clearLiveSessionSnapshot();
+        multiplayer.disconnect();
+
+        if (this.modals.exitMatch) this.modals.exitMatch.classList.remove('active');
+        if (this.dom.hostWaitingOverlay) this.dom.hostWaitingOverlay.classList.remove('active');
+
+        this.switchScreen('mainMenu');
+        this.showNotice('MAÇTAN AYRILDINIZ', 'Maç başarıyla sonlandırıldı ve ana menüye dönüldü.', '🚪');
     }
 }
 

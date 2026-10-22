@@ -22,7 +22,7 @@ const activeRooms = new Map();
 function cleanStaleRooms() {
     const now = Date.now();
     for (const [code, room] of activeRooms.entries()) {
-        if (now - room.updatedAt > 15 * 60 * 1000) {
+        if (now - room.updatedAt > 10 * 60 * 1000) {
             activeRooms.delete(code);
         }
     }

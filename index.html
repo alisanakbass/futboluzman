@@ -117,6 +117,9 @@
                 <button id="btnExitSpectator" class="btn-icon" style="display: none; width: auto; padding: 0 14px; font-size: 0.8rem; font-weight: 800; color: #ff2a5f; border-color: rgba(255,42,95,0.4);" title="Yayından Ayrıl">
                     🚪 AYRIL
                 </button>
+                <button id="btnExitMatch" class="btn-icon" style="width: auto; padding: 0 14px; font-size: 0.8rem; font-weight: 800; color: #ff2a5f; border-color: rgba(255,42,95,0.4);" title="Maçtan Ayrıl">
+                    🚪 AYRIL
+                </button>
                 <button id="audioToggle" class="btn-icon" title="Sesi Aç/Kapat">🔊</button>
             </div>
         </header>
@@ -468,6 +471,28 @@
             <button type="button" class="btn-cancel-modal" id="btnHostWaitingExit" style="margin-top: 18px; width: 100%;">
                 🚪 Ana Menüye Dön
             </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         MAÇTAN AYRILMA ONAY MODALI (ABANDON / LEAVE MATCH)
+         =================================================================== -->
+    <div class="modal-overlay" id="exitMatchModal">
+        <div class="modal-box" style="max-width: 440px; text-align: center;">
+            <div style="font-size: 3rem; margin-bottom: 8px;">🚪</div>
+            <h2 class="modal-title" style="font-size: 1.6rem; color: #ff2a5f;">MAÇTAN AYRIL</h2>
+            <p class="modal-desc" id="exitMatchDesc">
+                Maçtan ayrılmak istediğinize emin misiniz?<br>
+                Ev sahibi olarak ayrılırsanız oda kapatılacak ve diğer oyuncu bilgilendirilecektir.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+                <button type="button" class="btn-primary" id="btnConfirmExitMatch" style="background: linear-gradient(135deg, #ff2a5f, #d90429); box-shadow: 0 4px 15px rgba(255,42,95,0.4);">
+                    🔴 EVET, MAÇI BİTİR VE ÇIK
+                </button>
+                <button type="button" class="btn-cancel-modal" id="btnCancelExitMatch">
+                    ✕ VAZGEÇ, MAÇA DEVAM ET
+                </button>
+            </div>
         </div>
     </div>
 

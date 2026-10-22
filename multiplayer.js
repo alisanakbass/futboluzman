@@ -13,6 +13,7 @@ class MultiplayerManager {
         this.roomCode = null;
         this.callbacks = {};
         this.connected = false;
+        this.heartbeatTimer = null;
     }
 
     on(event, callback) {
@@ -52,6 +53,7 @@ class MultiplayerManager {
                     status: 'Lobi Bekleniyor',
                     round: 1
                 });
+                this.startRoomHeartbeat(this.roomCode, hostTeamName);
                 this.emit('roomCreated', { roomCode: this.roomCode, peerId: id });
             });
 
@@ -119,6 +121,7 @@ class MultiplayerManager {
                     status: 'Canlı Maç (Devam Ediyor)',
                     round: 1
                 });
+                this.startRoomHeartbeat(this.roomCode, hostTeamName);
                 this.emit('roomReclaimed', { roomCode: this.roomCode, peerId: id });
                 this.emit('roomCreated', { roomCode: this.roomCode, peerId: id });
             });
@@ -305,15 +308,28 @@ class MultiplayerManager {
     }
 
     // ===================================================================
-    // AÇIK ODALAR KEŞFİ VE KAYDI (API & LOCAL FALLBACK)
+    // AÇIK ODALAR KEŞFİ VE KAYDI (API & LOCAL FALLBACK - 10 DK TTL)
     // ===================================================================
-    async registerRoom(roomData) {
-        // 1. Yerel Depolama (Offline / Netlify Fallback)
+    cleanExpiredRooms() {
         try {
             const list = JSON.parse(localStorage.getItem('scout_active_rooms') || '[]');
-            const filtered = list.filter(r => r.code !== roomData.code && (Date.now() - r.updatedAt < 30 * 60 * 1000));
+            const now = Date.now();
+            // 10 dakikadan eski odaları at ve en fazla 5 odayı tut
+            const fresh = list.filter(r => (now - (r.updatedAt || 0)) < 10 * 60 * 1000).slice(0, 5);
+            localStorage.setItem('scout_active_rooms', JSON.stringify(fresh));
+            return fresh;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    async registerRoom(roomData) {
+        // 1. Yerel Depolama (Maksimum 5 taze oda, 10 dk ömür)
+        try {
+            const list = this.cleanExpiredRooms();
+            const filtered = list.filter(r => r.code !== roomData.code);
             filtered.unshift({ ...roomData, updatedAt: Date.now() });
-            localStorage.setItem('scout_active_rooms', JSON.stringify(filtered.slice(0, 8)));
+            localStorage.setItem('scout_active_rooms', JSON.stringify(filtered.slice(0, 5)));
         } catch (e) {}
 
         // 2. Sunucu API Kaydı (Çalışıyorsa)
@@ -323,6 +339,24 @@ class MultiplayerManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(roomData)
             });
+        } catch (e) {}
+    }
+
+    async unregisterRoom(roomCode) {
+        if (!roomCode) return;
+        this.stopRoomHeartbeat();
+        const codeStr = roomCode.toString().trim();
+
+        // 1. localStorage'dan anında sil
+        try {
+            const list = JSON.parse(localStorage.getItem('scout_active_rooms') || '[]');
+            const filtered = list.filter(r => r.code !== codeStr);
+            localStorage.setItem('scout_active_rooms', JSON.stringify(filtered));
+        } catch (e) {}
+
+        // 2. Canlı sunucu API'sinden sil
+        try {
+            await fetch(`/api/rooms/${codeStr}`, { method: 'DELETE' });
         } catch (e) {}
     }
 
@@ -338,12 +372,29 @@ class MultiplayerManager {
             }
         } catch (e) {}
 
-        // 2. Sunucu yoksa veya Netlify statik moddaysa localStorage'dan oku
-        try {
-            const list = JSON.parse(localStorage.getItem('scout_active_rooms') || '[]');
-            return list.filter(r => (Date.now() - (r.updatedAt || 0)) < 45 * 60 * 1000);
-        } catch (e) {
-            return [];
+        // 2. Sunucu yoksa veya Netlify statik moddaysa temizlenmiş localStorage'dan oku
+        return this.cleanExpiredRooms();
+    }
+
+    startRoomHeartbeat(roomCode, hostTeamName = 'Dharma') {
+        this.stopRoomHeartbeat();
+        this.heartbeatTimer = setInterval(() => {
+            if (this.isHost && this.roomCode) {
+                this.registerRoom({
+                    code: this.roomCode,
+                    host: hostTeamName,
+                    guest: '',
+                    status: 'Canlı Maç Devam Ediyor',
+                    round: 1
+                });
+            }
+        }, 30000); // 30 saniyede bir odayı güncelle
+    }
+
+    stopRoomHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
         }
     }
 
@@ -422,6 +473,7 @@ class MultiplayerManager {
     }
 
     disconnect() {
+        this.stopRoomHeartbeat();
         this.stopAutoReconnect();
         if (this.conn) this.conn.close();
         if (this.playerConn) this.playerConn.close();
