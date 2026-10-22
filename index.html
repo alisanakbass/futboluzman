@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Scaude Football Scout - FIFA Ultimate Squad Battle</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Rajdhani:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Ana Stil Dosyası -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Canvas Confetti Kütüphanesi -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <!-- PeerJS Çok Oyunculu WebRTC Kütüphanesi -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <!-- ===================================================================
+         1. TAM EKRAN ANA MENÜ EKRANI (MAIN MENU)
+         =================================================================== -->
+    <div id="mainMenuScreen" class="screen-view active">
+        <div class="menu-hero">
+            <div class="menu-logo-shield">⚽</div>
+            <h1 class="menu-title">SCAUDE SCOUT BATTLE</h1>
+            <p class="menu-subtitle">EA SPORTS FC KADRO KURMA & KÂR/ZARAR DÜELLOSU</p>
+
+            <div class="menu-options-grid">
+                <!-- 1. ODA KUR (HOST) -->
+                <div class="menu-card-btn" id="btnMenuHost">
+                    <span class="menu-card-icon">👑</span>
+                    <div class="menu-card-title">OYUN KUR (HOST)</div>
+                    <div class="menu-card-desc">Oda oluştur, kodunu arkadaşınla paylaş ve maçı sen başlat.</div>
+                </div>
+
+                <!-- 2. ODAYA KATIL (JOIN) -->
+                <div class="menu-card-btn" id="btnMenuJoin">
+                    <span class="menu-card-icon">🔗</span>
+                    <div class="menu-card-title">ODAYA KATIL (JOIN)</div>
+                    <div class="menu-card-desc">Arkadaşının oluşturduğu 4 haneli oda kodunu gir ve odaya bağlan.</div>
+                </div>
+
+                <!-- 3. AYNI EKRANDA 2 KİŞİ (LOCAL) -->
+                <div class="menu-card-btn" id="btnMenuLocal">
+                    <span class="menu-card-icon">👥</span>
+                    <div class="menu-card-title">AYNI EKRANDA (2 KİŞİ)</div>
+                    <div class="menu-card-desc">Arkadaşınla yan yana tek bilgisayardan sırayla oynayın.</div>
+                </div>
+
+                <!-- 4. İZLEYİCİ MODU (SPECTATOR) -->
+                <div class="menu-card-btn" id="btnMenuSpectator">
+                    <span class="menu-card-icon">📺</span>
+                    <div class="menu-card-title">İZLEYİCİ MODU</div>
+                    <div class="menu-card-desc">Açık canlı odaları listele veya kodla maçı canlı seyret.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         2. ÇOK OYUNCULU LOBİ EKRANI (LOBBY)
+         =================================================================== -->
+    <div id="lobbyScreen" class="screen-view">
+        <div class="lobby-box">
+            <h2 class="modal-title" id="lobbyTitleText">MAÇ LOBİSİ</h2>
+            <p class="modal-desc" id="lobbySubtitleText">Arkadaşınızın odaya katılması bekleniyor...</p>
+
+            <div class="room-code-badge">
+                <span style="font-size: 0.9rem; color: #94a3b8; font-weight:700;">ODA KODU:</span>
+                <span class="room-code-text" id="displayRoomCode">----</span>
+                <button class="btn-copy-code" id="btnCopyRoomCode">KOPYALA</button>
+            </div>
+
+            <div class="lobby-vs-area">
+                <div class="lobby-player-box" id="lobbyBoxTeamA">
+                    <div class="lobby-player-name" id="lobbyNameA">Dharma</div>
+                    <span class="lobby-status-tag status-ready" id="lobbyStatusA">HAZIR (EV SAHİBİ)</span>
+                </div>
+
+                <div style="font-family: var(--font-heading); font-size: 2rem; font-weight: 900; color: var(--gold-card-primary);">VS</div>
+
+                <div class="lobby-player-box" id="lobbyBoxTeamB">
+                    <div class="lobby-player-name" id="lobbyNameB">Bekleniyor...</div>
+                    <span class="lobby-status-tag status-waiting" id="lobbyStatusB">BEKLENİYOR ⏳</span>
+                </div>
+            </div>
+
+            <button type="button" class="btn-primary" id="btnLobbyStartMatch" style="display: none;">
+                MAÇI BAŞLAT ➔
+            </button>
+            <button type="button" class="btn-icon" id="btnLobbyBack" style="margin: 16px auto 0; width: auto; padding: 0 20px;">
+                ◀ Ana Menüye Dön
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         3. CANLI MAÇ VE KART ARENASI (MATCH SCREEN)
+         =================================================================== -->
+    <div id="matchScreen" class="screen-view">
+        <!-- Üst Bar -->
+        <header class="game-header">
+            <div class="logo-area">
+                <span style="font-size: 2rem;">⚽</span>
+                <div>
+                    <h1 class="logo-title">SCAUDE SCOUT BATTLE</h1>
+                    <p style="font-size:0.75rem; color:#ffd166; letter-spacing:1px; margin-top: -2px;">FIFA ULTIMATE TEAM KÂR/ZARAR DÜELLOSU</p>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <div class="spectator-badge-header" id="spectatorHeaderBadge" style="display: none;">
+                    <span class="live-dot"></span> 🔴 CANLI YAYIN
+                </div>
+                <button id="btnExitSpectator" class="btn-icon" style="display: none; width: auto; padding: 0 14px; font-size: 0.8rem; font-weight: 800; color: #ff2a5f; border-color: rgba(255,42,95,0.4);" title="Yayından Ayrıl">
+                    🚪 AYRIL
+                </button>
+                <button id="audioToggle" class="btn-icon" title="Sesi Aç/Kapat">🔊</button>
+            </div>
+        </header>
+
+        <!-- Skor Panosu -->
+        <section class="scoreboard">
+            <div class="team-card team-a" id="teamACard">
+                <div class="team-info">
+                    <div class="team-badge" id="teamABadge">A</div>
+                    <div>
+                        <span class="team-name" id="teamAName">Dharma</span>
+                        <div style="font-size:0.75rem; color:#94a3b8;">1. Takım</div>
+                    </div>
+                </div>
+
+                <div class="team-score-data">
+                    <div class="profit-label">Toplam Net Kâr</div>
+                    <div class="profit-amount" id="teamAProfit">+0.0 M€</div>
+                    <span class="joker-badge joker-ready" id="teamABlockBadge">🛡️ Blok: HAZIR</span>
+                </div>
+            </div>
+
+            <div class="round-indicator">
+                <span class="round-step-tag" id="currentRoundStep">Mevki 1 / 11</span>
+                <span class="round-pos-title" id="currentPositionTitle">Kaleci</span>
+            </div>
+
+            <div class="team-card team-b" id="teamBCard">
+                <div class="team-score-data">
+                    <div class="profit-label">Toplam Net Kâr</div>
+                    <div class="profit-amount" id="teamBProfit">+0.0 M€</div>
+                    <span class="joker-badge joker-ready" id="teamBBlockBadge">🛡️ Blok: HAZIR</span>
+                </div>
+
+                <div class="team-info">
+                    <div style="text-align: right;">
+                        <span class="team-name" id="teamBName">The Hunters</span>
+                        <div style="font-size:0.75rem; color:#94a3b8;">2. Takım</div>
+                    </div>
+                    <div class="team-badge" id="teamBBadge">B</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Canlı Eylem ve Gerilim Çubuğu -->
+        <div class="action-banner">
+            <div class="action-tip">
+                <span>🎯</span>
+                <span id="actionTipText">Sıradaki Seçim: <span class="tip-highlight">Dharma</span></span>
+            </div>
+
+            <button class="btn-block-joker" id="btnUseBlock" title="Rakibin seçimine müdahale et ve kartı kilitle">
+                🛡️ BLOK KULLAN (1 HAK)
+            </button>
+        </div>
+
+        <!-- 4 Adet EA FC / FIFA Kalkan Kartı Arenası -->
+        <main class="cards-arena" id="cardsArena">
+            <!-- Kartlar app.js tarafından EA FC Şeklinde basılır -->
+        </main>
+
+        <!-- Asılı Alt Kontroller: Sol Altta 4-3-3 Kadro, Sağ Altta Hızlı Geç -->
+        <div class="match-floating-bar">
+            <button type="button" class="floating-btn floating-pitch-btn" id="btnFloatingPitch" title="4-3-3 Saha Dizilişini Gör">
+                <span class="btn-icon-emoji">📋</span>
+                <span class="btn-text">4-3-3 KADRO DİZİLİŞİ</span>
+            </button>
+            <button type="button" class="floating-btn floating-skip-btn" id="btnFloatingSkip" title="Sıradaki Karta Hızlı Geç">
+                <span class="btn-icon-emoji">⚡</span>
+                <span class="btn-text" id="floatingSkipText">HIZLI GEÇ (15s)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 4-3-3 Kadro Dizilişi Modalı (Sol Alttaki Butona Tıklanınca Açılır) -->
+    <div class="modal-overlay modal-pitch-overlay" id="pitchModal">
+        <div class="modal-box pitch-modal-box">
+            <div class="pitch-modal-header">
+                <div class="pitch-title">
+                    <span>📋</span>
+                    <span>CANLI KADRO DİZİLİŞİ (4-3-3)</span>
+                </div>
+                <div class="team-tabs">
+                    <button type="button" class="team-tab-btn active" id="tabTeamA">Dharma</button>
+                    <button type="button" class="team-tab-btn" id="tabTeamB">The Hunters</button>
+                </div>
+                <button type="button" class="btn-close-modal" id="btnClosePitchModal" title="Kapat">✕</button>
+            </div>
+            <div class="football-pitch" id="pitchContainer">
+                <!-- Saha Çizgileri ve 11 Oyuncu Düğümü -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         MODALLAR: HOST / JOIN / YAZI-TURA / KAZANAN
+         =================================================================== -->
+    <!-- Host Modal -->
+    <div class="modal-overlay" id="hostModal">
+        <div class="modal-box">
+            <h2 class="modal-title">👑 ODA OLUŞTUR</h2>
+            <p class="modal-desc">Takımınızın ismini belirleyin ve lobiyi açın.</p>
+            <div class="form-group">
+                <label class="form-label">Takım İsminiz:</label>
+                <input type="text" id="hostTeamNameInput" class="form-input" value="Dharma" maxlength="18">
+            </div>
+            <button type="button" class="btn-primary" id="btnConfirmHost">LOBİYİ AÇ ➔</button>
+            <button type="button" class="btn-icon" onclick="document.getElementById('hostModal').classList.remove('active')" style="margin: 12px auto 0; width: auto; padding: 0 16px;">İptal</button>
+        </div>
+    </div>
+
+    <!-- Join Modal -->
+    <div class="modal-overlay" id="joinModal">
+        <div class="modal-box">
+            <h2 class="modal-title">🔗 ODAYA KATIL</h2>
+            <p class="modal-desc">Arkadaşınızın verdiği 4 haneli oda kodunu ve takım adınızı girin.</p>
+            <div class="form-group">
+                <label class="form-label">4 Haneli Oda Kodu:</label>
+                <input type="text" id="joinRoomCodeInput" class="form-input" placeholder="Örn: 4892" maxlength="6" style="text-transform:uppercase; font-size:1.4rem; text-align:center; letter-spacing:4px;">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Takım İsminiz:</label>
+                <input type="text" id="joinTeamNameInput" class="form-input" value="The Hunters" maxlength="18">
+            </div>
+            <button type="button" class="btn-primary" id="btnConfirmJoin">ODAYA BAĞLAN ➔</button>
+            <button type="button" class="btn-icon" onclick="document.getElementById('joinModal').classList.remove('active')" style="margin: 12px auto 0; width: auto; padding: 0 16px;">İptal</button>
+        </div>
+    </div>
+
+    <!-- Yerel 2 Kişi Modal -->
+    <div class="modal-overlay" id="localModal">
+        <div class="modal-box">
+            <h2 class="modal-title">👥 AYNI EKRANDA (2 KİŞİ)</h2>
+            <p class="modal-desc">İki takımın isimlerini girip tek cihazdan hemen maça başlayın.</p>
+            <div class="form-group">
+                <label class="form-label">1. Takım İsmi:</label>
+                <input type="text" id="localTeamANameInput" class="form-input" value="Dharma" maxlength="18">
+            </div>
+            <div class="form-group">
+                <label class="form-label">2. Takım İsmi:</label>
+                <input type="text" id="localTeamBNameInput" class="form-input" value="The Hunters" maxlength="18">
+            </div>
+            <button type="button" class="btn-primary" id="btnConfirmLocal">MAÇI BAŞLAT ➔</button>
+            <button type="button" class="btn-icon" onclick="document.getElementById('localModal').classList.remove('active')" style="margin: 12px auto 0; width: auto; padding: 0 16px;">İptal</button>
+        </div>
+    </div>
+
+    <!-- İzleyici Modu Modalı (Canlı Odalar & Kod Girişi) -->
+    <div class="modal-overlay" id="spectatorModal">
+        <div class="modal-box spectator-modal-box">
+            <div style="font-size: 2.8rem; margin-bottom: 6px;">📺</div>
+            <h2 class="modal-title" style="font-size: 1.8rem;">CANLI MAÇ İZLE</h2>
+            <p class="modal-desc">Açık canlı odalardan birini seçin veya doğrudan oda kodunu girin.</p>
+
+            <!-- Aktif Canlı Odalar Bölümü -->
+            <div class="active-rooms-section">
+                <div class="active-rooms-header">
+                    <span>🔴 AÇIK CANLI ODALAR</span>
+                    <button type="button" class="btn-refresh-rooms" id="btnRefreshRooms" title="Odaları Yenile">🔄 Yenile</button>
+                </div>
+                <div class="active-rooms-list" id="activeRoomsList">
+                    <div class="no-rooms-msg">Aktif oda aranıyor...</div>
+                </div>
+            </div>
+
+            <!-- Manuel Kod Girişi -->
+            <div class="form-group" style="margin-top: 16px;">
+                <label class="form-label">Veya 4 Haneli Oda Kodu Girin:</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="spectatorRoomCodeInput" class="form-input" placeholder="Örn: 4892" maxlength="6" style="text-transform:uppercase; font-size:1.3rem; text-align:center; letter-spacing:4px;">
+                    <button type="button" class="btn-primary" id="btnConfirmSpectator" style="white-space:nowrap; padding: 0 20px;">
+                        İZLE ➔
+                    </button>
+                </div>
+            </div>
+
+            <button type="button" class="btn-cancel-modal" id="btnCancelSpectator" style="margin: 12px auto 0; width: 100%;">✕ Kapat</button>
+        </div>
+    </div>
+
+    <!-- Yazı Tura Modal -->
+    <div class="modal-overlay" id="coinModal">
+        <div class="modal-box">
+            <h2 class="modal-title">🪙 YAZI - TURA ATIŞI</h2>
+            <p class="modal-desc">İlk seçimi yapacak takımı belirlemek için parayı çevirin!</p>
+
+            <div class="coin-box">
+                <div class="coin" id="coinElement">
+                    <div class="coin-side side-a">
+                        <span style="font-size: 2.2rem;">⭐</span>
+                        <span id="coinSideAName" style="font-weight: 800; font-family: var(--font-heading);">Dharma</span>
+                    </div>
+                    <div class="coin-side side-b">
+                        <span style="font-size: 2.2rem;">🔥</span>
+                        <span id="coinSideBName" style="font-weight: 800; font-family: var(--font-heading);">The Hunters</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="coinResultText" style="font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 24px; min-height: 28px;">
+                Hazır olduğunuzda para atışını başlatın!
+            </div>
+
+            <button type="button" class="btn-primary" id="btnFlipCoin">
+                PARAYI HAVAYA AT 🪙
+            </button>
+        </div>
+    </div>
+
+    <!-- Büyük Final / Şampiyon Modalı -->
+    <div class="modal-overlay" id="winnerModal">
+        <div class="modal-box" style="max-width: 620px;">
+            <div class="winner-podium">
+                <div class="trophy-icon">🏆</div>
+                <h2 class="winner-team-name" id="winnerTeamTitle">ŞAMPİYON DHARMA!</h2>
+                <div id="finalScoreSummary" style="font-size: 0.95rem; color: #cbd5e1; line-height: 1.6;"></div>
+            </div>
+
+            <div class="highlight-cards-grid">
+                <div class="highlight-card best">
+                    <div style="font-size:0.75rem; font-weight:800; color:var(--primary-neon); text-transform:uppercase;">🔥 GÜNÜN KELEPİR TRANSFERİ</div>
+                    <div class="highlight-player-name" id="bestTransferName">-</div>
+                    <div class="highlight-amount" style="color:var(--primary-neon);" id="bestTransferProfit">+0.0 M€</div>
+                </div>
+
+                <div class="highlight-card worst">
+                    <div style="font-size:0.75rem; font-weight:800; color:var(--accent-danger); text-transform:uppercase;">💣 GÜNÜN BÜYÜK FİYASKOSU</div>
+                    <div class="highlight-player-name" id="worstTransferName">-</div>
+                    <div class="highlight-amount" style="color:var(--accent-danger);" id="worstTransferProfit">-0.0 M€</div>
+                </div>
+            </div>
+
+            <button type="button" class="btn-primary" id="btnRestartGame">
+                YENİ MAÇ BAŞLAT 🔁
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         KART SEÇİM ONAY MODALI (EMİN MİSİN?)
+         =================================================================== -->
+    <div class="modal-overlay" id="confirmPickModal">
+        <div class="modal-box confirm-pick-box">
+            <div class="confirm-pick-icon">🎯</div>
+            <h2 class="modal-title" style="font-size: 1.8rem;">KARTI KİLİTLEMEK İSTİYOR MUSUNUZ?</h2>
+            <p class="modal-desc">
+                <span class="tip-highlight" id="confirmPickTeamName">Dharma</span> için seçim onaylanıyor
+            </p>
+
+            <div class="confirm-pick-card-preview" id="confirmPickCardPreview">
+                <div class="confirm-card-slot" id="confirmPickSlot">SEÇENEK #1</div>
+                <div class="confirm-card-season" id="confirmPickSeason">2018/19 Sezonu</div>
+                <div class="confirm-card-val" id="confirmPickVal">85.0 M€</div>
+                <div class="confirm-card-pos" id="confirmPickPos">Kaleci (GK)</div>
+            </div>
+
+            <div class="confirm-modal-actions">
+                <button type="button" class="btn-primary btn-confirm-lock" id="btnConfirmPickYes">
+                    🔒 EVET, KİLİTLE
+                </button>
+                <button type="button" class="btn-cancel-modal" id="btnConfirmPickNo">
+                    ✕ VAZGEÇ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         ÖZEL BİLDİRİM & UYARI MODALI (ALERT YERİNE)
+         =================================================================== -->
+    <div class="modal-overlay" id="noticeModal">
+        <div class="modal-box notice-modal-box">
+            <div class="notice-icon" id="noticeIcon">⚠️</div>
+            <h2 class="modal-title" id="noticeTitle" style="font-size: 1.6rem;">BİLDİRİM</h2>
+            <div class="notice-message" id="noticeMessage">
+                İşlem mesajı burada yer alır.
+            </div>
+            <button type="button" class="btn-primary" id="btnNoticeClose" style="min-width: 140px; margin: 0 auto;">
+                TAMAM
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         BLOK JOKER SEÇİM MODALI (PROMPT YERİNE)
+         =================================================================== -->
+    <div class="modal-overlay" id="blockModal">
+        <div class="modal-box block-modal-box">
+            <div style="font-size: 3rem; margin-bottom: 8px;">🛡️</div>
+            <h2 class="modal-title" style="font-size: 1.7rem;">BLOK JOKERİ KULLAN</h2>
+            <p class="modal-desc" id="blockModalDesc">Rakibin seçmesini istemediğiniz kartı belirleyin:</p>
+            <div class="block-cards-grid" id="blockCardsGrid">
+                <!-- Kart düğmeleri dinamik doldurulur -->
+            </div>
+            <button type="button" class="btn-cancel-modal" id="btnCancelBlock" style="width: 100%; margin-top: 8px;">
+                ✕ VAZGEÇ
+            </button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         DEVAM EDEN MAÇ KURTARMA MODALI (HOST RECOVERY)
+         =================================================================== -->
+    <div class="modal-overlay" id="resumeSessionModal">
+        <div class="modal-box resume-modal-box">
+            <div class="resume-icon">⚡</div>
+            <h2 class="modal-title" style="font-size: 1.8rem; color: #ffd166;">DEVAM EDEN MAÇ BULUNDU!</h2>
+            <p class="modal-desc" id="resumeSessionDesc">
+                Sayfa yenilenmeden önceki maçınız kaydedildi. Kaldığınız yerden kesintisiz devam edebilirsiniz.
+            </p>
+
+            <div class="resume-match-info-card">
+                <div class="resume-room-badge" id="resumeRoomCodeBadge">ODA: #----</div>
+                <div class="resume-teams-vs" id="resumeTeamsVs">Dharma vs The Hunters</div>
+                <div class="resume-round-status" id="resumeRoundStatus">Mevki 1 / 11 • Kaleci</div>
+            </div>
+
+            <div class="resume-actions">
+                <button type="button" class="btn-primary btn-resume-continue" id="btnResumeContinue">
+                    ▶ MAÇA GERİ DÖN (DEVAM ET)
+                </button>
+                <button type="button" class="btn-cancel-modal" id="btnResumeDiscard">
+                    ✕ Oturumu Sil & Yeni Maç Başlat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================
+         MİSAFİR İÇİN HOST BEKLEME EKRANI OVERLAY (HOST REFRESH OVERLAY)
+         =================================================================== -->
+    <div class="host-waiting-overlay" id="hostWaitingOverlay">
+        <div class="host-waiting-box">
+            <div class="host-waiting-radar">
+                <div class="radar-circle circle-1"></div>
+                <div class="radar-circle circle-2"></div>
+                <div class="radar-circle circle-3"></div>
+                <span class="radar-center-icon">📡</span>
+            </div>
+            <h2 class="host-waiting-title">EV SAHİBİ BEKLENİYOR...</h2>
+            <p class="host-waiting-desc" id="hostWaitingDesc">
+                Ev sahibi sayfayı yeniledi veya geçici olarak koptu.<br>
+                Maç durumu korundu, bağlantı otomatik olarak yeniden kuruluyor...
+            </p>
+            <div class="host-waiting-status-tag" id="hostWaitingStatusTag">
+                <span class="live-dot" style="background:#00d2ff; box-shadow:0 0 10px #00d2ff;"></span>
+                <span id="hostWaitingAttemptText">Yeniden bağlanma deneniyor...</span>
+            </div>
+            <button type="button" class="btn-cancel-modal" id="btnHostWaitingExit" style="margin-top: 18px; width: 100%;">
+                🚪 Ana Menüye Dön
+            </button>
+        </div>
+    </div>
+
+    <!-- Uygulama Scriptleri -->
+    <script src="constants.js"></script>
+    <script src="audio.js"></script>
+    <script src="multiplayer.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

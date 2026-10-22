@@ -1,0 +1,298 @@
+/* ===================================================================
+   TAM MOBİL VE RESPONSIVE UYUMLULUK (DİK VE YAN MODLAR)
+   =================================================================== */
+
+/* Tablet & Küçük Ekranlar */
+@media (max-width: 1024px) {
+    .menu-options-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .cards-arena { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .yt-card-container { height: 440px; }
+    .match-container { padding-bottom: 90px; }
+    .match-floating-bar { padding: 0 16px; bottom: 12px; }
+}
+
+/* Telefonlar - DİK MOD (PORTRAIT) */
+@media (max-width: 768px) {
+    .match-container { padding: 6px 8px 80px; }
+
+    /* Başlık Barı (Logo + Ses) Çok Kompakt */
+    .game-header {
+        padding: 6px 12px;
+        margin-bottom: 6px;
+        border-radius: 12px;
+    }
+    .logo-area span { font-size: 1.3rem !important; }
+    .logo-title { font-size: 1.05rem; }
+    .logo-area p { display: none !important; } /* Alt sloganı mobilde gizle */
+    .btn-icon { width: 34px; height: 34px; font-size: 1rem; }
+
+    /* Skor Panosu: Mobilde Şık, 2 Satırlı Grid */
+    .scoreboard {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto;
+        gap: 6px;
+        padding: 6px 8px;
+        margin-bottom: 8px;
+        border-radius: 14px;
+    }
+
+    /* 1. Satır: Mevki ve Tur Göstergesi (Tam Genişlik) */
+    .round-indicator {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 12px;
+        min-width: 100%;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+    }
+    .round-pos-title { font-size: 1.05rem; }
+    .round-step-tag { font-size: 0.75rem; }
+
+    /* 2. Satır: 1. ve 2. Takım Kartları (Yan Yana, Kompakt) */
+    .team-card {
+        padding: 6px 10px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+        min-height: auto;
+    }
+
+    .team-card.team-a {
+        grid-column: 1;
+        align-items: flex-start;
+    }
+
+    .team-card.team-b {
+        grid-column: 2;
+        align-items: flex-end;
+    }
+
+    .team-card .team-info {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .team-card.team-b .team-info {
+        flex-direction: row-reverse;
+    }
+
+    .team-card.team-b .team-info > div {
+        text-align: right;
+    }
+
+    .team-badge {
+        width: 24px;
+        height: 24px;
+        font-size: 0.8rem;
+        border-radius: 6px;
+        flex-shrink: 0;
+    }
+
+    .team-name {
+        font-size: 0.88rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 80px;
+        line-height: 1.1;
+    }
+
+    .team-card .team-info div div:last-child {
+        display: none !important; /* "1. Takım" / "2. Takım" alt etiketini gizle */
+    }
+
+    .team-score-data {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        margin-top: 2px;
+    }
+
+    .team-card.team-b .team-score-data {
+        flex-direction: row-reverse;
+    }
+
+    .profit-label {
+        display: none !important; /* "Toplam Net Kâr" metnini gizle */
+    }
+
+    .profit-amount {
+        font-size: 1.2rem;
+        line-height: 1;
+        font-weight: 850;
+    }
+
+    .joker-badge {
+        font-size: 0.6rem;
+        padding: 2px 5px;
+    }
+
+    .team-card.active-turn::before {
+        content: 'SEÇİYOR';
+        position: absolute;
+        top: -6px;
+        right: 6px;
+        font-size: 0.52rem;
+        font-weight: 900;
+        letter-spacing: 0.5px;
+        padding: 2px 5px;
+        border-radius: 10px;
+    }
+
+    /* Eylem Çubuğu: Kompakt */
+    .action-banner {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        margin-bottom: 10px;
+        border-radius: 10px;
+    }
+    .action-tip {
+        font-size: 0.82rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .btn-block-joker {
+        padding: 5px 10px;
+        font-size: 0.78rem;
+        white-space: nowrap;
+        width: auto;
+    }
+
+    /* Mobilde 2x2 Izgara Kart Düzeni */
+    .cards-arena {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+    .yt-card-container {
+        height: 350px;
+    }
+    .yt-card-face {
+        padding: 10px 8px 8px;
+    }
+    .yt-silhouette-box {
+        margin-top: 4px;
+        margin-bottom: 4px;
+    }
+    .yt-silhouette-icon {
+        width: 70px;
+        height: 80px;
+    }
+    .yt-season-badge {
+        font-size: 1.15rem;
+        padding: 2px 8px;
+        top: -8px;
+        left: 4px;
+    }
+    .yt-stats-table td {
+        font-size: 0.85rem;
+        padding: 4px 6px;
+    }
+    
+    .yt-photo-box {
+        height: 160px;
+        margin-bottom: 6px;
+    }
+    .yt-player-name {
+        font-size: 1rem;
+    }
+    .yt-player-club {
+        font-size: 0.72rem;
+    }
+    .yt-profit-pill {
+        font-size: 0.95rem;
+        padding: 2px 7px;
+    }
+    .yt-summary-table td {
+        font-size: 0.88rem;
+        padding: 4px 6px;
+    }
+
+    .team-choice-tag {
+        font-size: 0.7rem;
+        padding: 3px 10px;
+        top: -24px;
+        letter-spacing: 0.5px;
+    }
+
+    .match-floating-bar { padding: 0 10px; bottom: 10px; }
+    .floating-btn { padding: 9px 14px; font-size: 0.82rem; }
+    .football-pitch { height: 360px; }
+}
+
+/* Küçük Ekran Telefonlar (max-width: 440px) */
+@media (max-width: 440px) {
+    .yt-card-container { height: 350px; }
+    .yt-photo-box { height: 155px; }
+    .yt-silhouette-icon { width: 70px; height: 80px; }
+    .yt-stats-table td { font-size: 0.82rem; padding: 4px 4px; }
+    .yt-summary-table td { font-size: 0.85rem; padding: 4px 6px; }
+    .floating-btn { padding: 8px 12px; font-size: 0.8rem; }
+}
+
+/* Telefonlar - YAN MOD (LANDSCAPE) */
+@media (max-height: 550px) and (orientation: landscape) {
+    .match-container { padding: 4px 8px 55px; }
+    .scoreboard {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 12px;
+        margin-bottom: 6px;
+    }
+    .team-score-card { padding: 4px 10px; }
+    .team-badge { width: 28px; height: 28px; font-size: 1rem; }
+    .team-name { font-size: 0.9rem; }
+    .profit-amount { font-size: 1.15rem; }
+    .round-indicator { padding: 4px 10px; min-width: auto; }
+    .round-pos-title { font-size: 0.95rem; }
+    .action-banner {
+        padding: 4px 10px;
+        margin-bottom: 6px;
+        font-size: 0.85rem;
+    }
+    .btn-block-joker { padding: 5px 12px; font-size: 0.82rem; }
+
+    /* Yan modda 4 kart tek sırada sığar */
+    .cards-arena {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .yt-card-container {
+        height: calc(100vh - 120px);
+        min-height: 250px;
+        max-height: 330px;
+    }
+    .yt-silhouette-icon { width: 55px; height: 65px; }
+    .yt-season-badge { font-size: 1.1rem; padding: 1px 8px; top: -8px; }
+    .yt-stats-table td { font-size: 0.82rem; padding: 3px 6px; }
+    .yt-photo-box { height: 125px; margin-bottom: 4px; }
+    .yt-player-name { font-size: 0.95rem; }
+    .yt-player-club { font-size: 0.72rem; }
+    .yt-profit-pill { font-size: 0.9rem; padding: 2px 6px; }
+    .yt-summary-table td { font-size: 0.85rem; padding: 3px 6px; }
+
+    .team-choice-tag {
+        font-size: 0.68rem;
+        padding: 2px 8px;
+        top: -22px;
+    }
+
+    .match-floating-bar { padding: 0 12px; bottom: 6px; }
+    .floating-btn { padding: 6px 14px; font-size: 0.78rem; }
+    .football-pitch { height: 280px; }
+}
