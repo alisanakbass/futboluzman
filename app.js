@@ -992,6 +992,7 @@ class ScoutGame {
 
                         <div class="yt-photo-box">
                             <img src="${player.foto_url}" class="yt-player-photo" alt="${player.gercek_isim}"
+                                 loading="lazy" decoding="async" referrerpolicy="no-referrer"
                                  onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(player.gercek_isim)}&background=0f172a&color=ffd700&size=256&bold=true';">
                         </div>
 
