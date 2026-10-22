@@ -221,9 +221,6 @@
 .yt-card-container {
     -webkit-perspective: 1000px;
     perspective: 1000px;
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-    isolation: isolate;
     height: 480px;
     cursor: pointer;
     position: relative;
@@ -245,7 +242,6 @@
     backface-visibility: hidden;
     transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     border-radius: 12px;
-    will-change: transform;
 }
 
 .yt-card-container.is-flipped .yt-card-inner {
