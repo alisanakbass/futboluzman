@@ -795,6 +795,21 @@ class ScoutGame {
                 '🚪'
             );
         });
+
+        // Bağlantı Hatası Yakalama
+        multiplayer.on('error', (err) => {
+            console.error('Multiplayer bağlantı hatası:', err);
+            if (this.screens.lobby && this.screens.lobby.classList.contains('active')) {
+                if (this.dom.lobbyStatusB) {
+                    this.dom.lobbyStatusB.textContent = 'BAĞLANTI BAŞARISIZ ❌';
+                    this.dom.lobbyStatusB.className = 'lobby-status-tag status-not-ready';
+                }
+                const msg = (err && (err.type === 'peer-unavailable' || (err.message && err.message.includes('unavailable'))))
+                    ? 'Bu koda sahip açık bir oda bulunamadı veya oda kapandı. Lütfen oda kodunu kontrol edin.'
+                    : 'Odaya bağlanılamadı. Lütfen oda kodunu ve internet bağlantınızı kontrol edin.';
+                this.showNotice('BAĞLANTI HATASI', msg, '⚠️');
+            }
+        });
     }
 
     // ===================================================================

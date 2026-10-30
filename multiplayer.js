@@ -35,6 +35,44 @@ class MultiplayerManager {
     }
 
     // ===================================================================
+    // KÜRESEL STUN & TURN (AKTARICI KÖPRÜ) SUNUCU YAPILANDIRMASI
+    // Ülkeler arası bağlantılarda ve katı mobil (Symmetric NAT) ağlarda el sıkışmayı sağlar
+    // ===================================================================
+    getPeerConfig() {
+        return {
+            debug: 1,
+            config: {
+                iceServers: [
+                    // Küresel Google STUN Sunucuları (Hızlı doğrudan P2P el sıkışma için)
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' },
+
+                    // Cloudflare & Twilio STUN
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    { urls: 'stun:global.stun.twilio.com:3478' },
+
+                    // Açık WebRTC TURN (Relay - Aktarıcı Köprü) Sunucuları
+                    // Ülkeler arası güvenlik duvarları, katı mobil operatörler ve Symmetric NAT engellerini aşmak için
+                    {
+                        urls: [
+                            'turn:openrelay.metered.ca:80',
+                            'turn:openrelay.metered.ca:443',
+                            'turns:openrelay.metered.ca:443?transport=tcp'
+                        ],
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ],
+                iceCandidatePoolSize: 10,
+                sdpSemantics: 'unified-plan'
+            }
+        };
+    }
+
+    // ===================================================================
     // 1. EV SAHİBİ (HOST) OLARAK ODA KUR
     // ===================================================================
     createRoom(customCode = null, hostTeamName = 'Dharma') {
@@ -46,7 +84,7 @@ class MultiplayerManager {
         this.spectatorConns = [];
 
         try {
-            this.peer = new Peer(peerId, { debug: 1 });
+            this.peer = new Peer(peerId, this.getPeerConfig());
 
             this.peer.on('open', (id) => {
                 this.registerRoom({
@@ -127,7 +165,7 @@ class MultiplayerManager {
         this.emit('hostMigrationAttempt', { roomCode: cleanCode, attempt, maxAttempts });
 
         try {
-            this.peer = new Peer(peerId, { debug: 1 });
+            this.peer = new Peer(peerId, this.getPeerConfig());
 
             this.peer.on('open', (id) => {
                 this.isMigrating = false;
@@ -209,7 +247,7 @@ class MultiplayerManager {
         this.emit('reclaimingRoom', { roomCode: cleanCode, attempt });
 
         try {
-            this.peer = new Peer(peerId, { debug: 1 });
+            this.peer = new Peer(peerId, this.getPeerConfig());
 
             this.peer.on('open', (id) => {
                 console.log(`[Host] Oda #${cleanCode} başarıyla geri alındı (Peer ID: ${id})`);
@@ -282,7 +320,7 @@ class MultiplayerManager {
             try { this.peer.destroy(); } catch (e) {}
         }
 
-        this.peer = new Peer({ debug: 1 });
+        this.peer = new Peer(this.getPeerConfig());
 
         let resolved = false;
 
@@ -333,7 +371,13 @@ class MultiplayerManager {
         const hostPeerId = `scout-game-${this.roomCode}`;
 
         try {
-            this.peer = new Peer({ debug: 1 });
+            if (this.peer) {
+                try { this.peer.destroy(); } catch (e) {}
+            }
+
+            this.peer = new Peer(this.getPeerConfig());
+
+            let connectTimer = null;
 
             this.peer.on('open', (id) => {
                 const connection = this.peer.connect(hostPeerId, {
@@ -342,9 +386,22 @@ class MultiplayerManager {
                 });
                 this.conn = connection;
                 this.setupPlayerConnection(connection);
+
+                // 15 saniye içinde data channel açılmazsa zaman aşımı fırlat
+                connectTimer = setTimeout(() => {
+                    if (!this.connected) {
+                        console.warn('[joinRoom] Bağlantı zaman aşımına uğradı');
+                        this.emit('error', { type: 'timeout', message: 'Odaya bağlanma zaman aşımına uğradı.' });
+                    }
+                }, 15000);
+            });
+
+            this.on('peerConnected', () => {
+                if (connectTimer) clearTimeout(connectTimer);
             });
 
             this.peer.on('error', (err) => {
+                if (connectTimer) clearTimeout(connectTimer);
                 console.warn('Odaya bağlanma hatası:', err);
                 this.emit('error', err);
             });
@@ -364,7 +421,7 @@ class MultiplayerManager {
         const hostPeerId = `scout-game-${this.roomCode}`;
 
         try {
-            this.peer = new Peer({ debug: 1 });
+            this.peer = new Peer(this.getPeerConfig());
 
             this.peer.on('open', (id) => {
                 const connection = this.peer.connect(hostPeerId, {
@@ -582,7 +639,7 @@ class MultiplayerManager {
             console.log(`[Misafir] Host'a bağlanma deneniyor (${attempt}/${maxAttempts})...`);
 
             if (!this.peer || this.peer.destroyed) {
-                this.peer = new Peer({ debug: 1 });
+                this.peer = new Peer(this.getPeerConfig());
             }
 
             const hostPeerId = `scout-game-${cleanCode}`;
