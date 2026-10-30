@@ -437,39 +437,42 @@
     align-items: center;
     margin-bottom: 8px;
     padding-top: 4px;
+    gap: 8px;
 }
 
 .yt-player-info {
     display: flex;
     flex-direction: column;
-    max-width: 65%;
-    overflow: hidden;
+    flex: 1;
+    min-width: 0;
     text-align: left;
 }
 
 .yt-player-name {
     font-family: var(--font-heading);
-    font-size: 1.25rem;
+    font-size: clamp(0.82rem, 3.2vw, 1.25rem);
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
+    letter-spacing: 0.4px;
+    line-height: 1.15;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.1;
 }
 
 .yt-player-club {
     font-family: var(--font-heading);
-    font-size: 0.88rem;
+    font-size: clamp(0.68rem, 2.2vw, 0.88rem);
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     opacity: 0.9;
-    margin-top: 1px;
+    margin-top: 2px;
 }
 
 .yt-card-face.theme-grey .yt-player-club {
@@ -495,6 +498,8 @@
     letter-spacing: 0.5px;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
     display: inline-block;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .yt-profit-pill.gain {
@@ -512,15 +517,15 @@
     border: 2px solid #94a3b8;
 }
 
-/* Fotoğraf Alanı */
+/* Fotoğraf Alanı (Şeffaf EA FC Portresi & 3D Gölge) */
 .yt-photo-box {
     width: 100%;
     height: 250px;
     overflow: hidden;
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.1);
+    background: radial-gradient(circle at center 45%, rgba(255, 255, 255, 0.18) 0%, transparent 75%);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     margin-bottom: 10px;
 }
@@ -528,8 +533,10 @@
 .yt-player-photo {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: top center;
+    object-fit: contain;
+    object-position: bottom center;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+    transition: transform 0.3s ease;
 }
 
 /* Açılış Sonrası 2 Satırlı Tablo */

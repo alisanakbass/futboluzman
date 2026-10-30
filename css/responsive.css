@@ -224,17 +224,28 @@
         margin-bottom: 4px;
         padding-top: 2px;
         flex-shrink: 0;
+        gap: 6px;
+    }
+    .yt-player-info {
+        flex: 1;
+        min-width: 0;
     }
     .yt-player-name {
-        font-size: 0.92rem;
-        line-height: 1.1;
+        font-size: 0.82rem;
+        line-height: 1.12;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
     }
     .yt-player-club {
-        font-size: 0.68rem;
+        font-size: 0.65rem;
     }
     .yt-profit-pill {
-        font-size: 0.88rem;
+        font-size: 0.82rem;
         padding: 2px 6px;
+        flex-shrink: 0;
     }
     .yt-photo-box {
         flex: 1 1 0;
@@ -263,12 +274,18 @@
     .match-floating-bar { padding: 0 8px; bottom: 8px; }
     .floating-btn { padding: 7px 12px; font-size: 0.78rem; }
     .football-pitch { height: 350px; }
+    .player-node .player-pin { width: 34px; height: 34px; font-size: 0.68rem; }
+    .player-tag { font-size: 0.58rem; max-width: 65px; padding: 1px 4px; }
+    .player-profit-pill { font-size: 0.55rem; padding: 1px 3px; }
 }
 
 /* Küçük Ekran Telefonlar (max-width: 440px) */
 @media (max-width: 440px) {
     .cards-arena { gap: 6px; }
     .yt-card-container { height: 275px; }
+    .yt-player-name { font-size: 0.75rem; line-height: 1.08; }
+    .yt-player-club { font-size: 0.60rem; }
+    .yt-profit-pill { font-size: 0.75rem; padding: 1.5px 5px; }
     .yt-photo-box { min-height: 85px; max-height: 130px; }
     .yt-silhouette-icon { width: 50px; height: 58px; }
     .yt-stats-table td { font-size: 0.74rem; padding: 2px 4px; }

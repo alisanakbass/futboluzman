@@ -50,6 +50,11 @@ class ScoutGame {
         // Seçim Onay Modalı Durumu
         this.pendingCardPickIndex = null;
 
+        // Rakip Bekleme ve 3 Dakika Sayacı (0 Oyuncu Koruması)
+        this.isWaitingForOpponent = false;
+        this.opponentWaitTimer = null;
+        this.opponentWaitSeconds = 180;
+
         this.init();
     }
 
@@ -178,28 +183,29 @@ class ScoutGame {
     setupEventListeners() {
         // --- 1. ANA MENÜ BUTONLARI ---
         document.getElementById('btnMenuHost').addEventListener('click', () => {
-            soundFX.whistle();
+            soundFX.btnClick();
             this.modals.host.classList.add('active');
         });
 
         document.getElementById('btnMenuJoin').addEventListener('click', () => {
-            soundFX.whistle();
+            soundFX.btnClick();
             this.modals.join.classList.add('active');
         });
 
         document.getElementById('btnMenuLocal').addEventListener('click', () => {
-            soundFX.whistle();
+            soundFX.btnClick();
             this.modals.local.classList.add('active');
         });
 
         // İzleyici Modu Menü Butonu
         if (this.dom.btnMenuSpectator) {
             this.dom.btnMenuSpectator.addEventListener('click', () => {
-                soundFX.whistle();
+                soundFX.btnClick();
                 this.loadAndRenderActiveRooms();
                 this.modals.spectator.classList.add('active');
             });
         }
+
 
         // --- 2. HOST ONAY BUTONU ---
         document.getElementById('btnConfirmHost').addEventListener('click', () => {
@@ -413,13 +419,25 @@ class ScoutGame {
 
         if (this.dom.btnHostWaitingExit) {
             this.dom.btnHostWaitingExit.addEventListener('click', () => {
+                this.stopOpponentCountdown();
                 this.discardLiveSession();
             });
         }
 
-        // --- 8. KAZARA YENİLEME / SEKME KAPATMA KORUMASI ---
+        // --- 8. KAZARA YENİLEME / SEKME KAPATMA KORUMASI (0 OYUNCU KONTROLÜ) ---
         window.addEventListener('beforeunload', (e) => {
             if (this.screens.match && this.screens.match.classList.contains('active') && this.currentRound < 11) {
+                // Eğer odada tek başımıza kalmışsak ve biz de çıkıyorsak -> ODADA 0 OYUNCU KALDI -> HER ŞEYİ SİL!
+                if (this.isWaitingForOpponent) {
+                    this.clearLiveSessionSnapshot();
+                    if (multiplayer.roomCode) {
+                        multiplayer.unregisterRoom(multiplayer.roomCode);
+                    }
+                    return;
+                }
+
+                // Odada rakip varken biz çıkıyorsak anında haber ver ve oturumu kaydet
+                multiplayer.sendLeavingNotice();
                 this.saveLiveSessionSnapshot();
                 e.preventDefault();
                 e.returnValue = 'Devam eden bir maçınız var! Ayrılmak istediğinize emin misiniz?';
@@ -484,7 +502,7 @@ class ScoutGame {
         });
 
         multiplayer.on('peerConnected', (data) => {
-            soundFX.whistle();
+            soundFX.btnClick();
             if (data.isHost) {
                 // Host tarafı: Misafir bağlandı
                 this.dom.lobbyStatusB.textContent = 'HAZIR ✅';
@@ -552,7 +570,7 @@ class ScoutGame {
             this.renderRound();
             this.renderPitchNodes();
             this.saveLiveSessionSnapshot();
-            soundFX.whistle();
+            soundFX.btnClick();
             this.showNotice('MAÇA DÖNÜLDÜ', '✅ Ev sahibi ile bağlantı tekrar kuruldu! Maç kaldığı yerden devam ediyor.', '⚡');
         });
 
@@ -663,52 +681,103 @@ class ScoutGame {
             this.showNotice('CANLI YAYIN BAĞLANDI', `🔴 <strong>${this.teams.teamA.name}</strong> vs <strong>${this.teams.teamB.name}</strong> maçına bağlandınız!`, '📺');
         });
 
-        // Bağlantı Kopması (Host veya Misafir Düşünce)
-        multiplayer.on('peerDisconnected', () => {
+        // --- DİNAMİK EV SAHİBİ DEVRİ (HOST MIGRATION) VE YENİDEN BAĞLANMA ---
+        multiplayer.on('hostMigrationAttempt', (data) => {
+            if (this.dom.hostWaitingOverlay) {
+                const titleEl = this.dom.hostWaitingOverlay.querySelector('.host-waiting-title');
+                const descEl = document.getElementById('hostWaitingDesc');
+                if (titleEl) titleEl.textContent = '👑 EV SAHİBİ AYRILDI';
+                if (descEl) descEl.innerHTML = `Ev sahibi sayfayı yeniledi veya ayrıldı.<br>Oda kontrolü size devrediliyor, lütfen bekleyin...`;
+                if (this.dom.hostWaitingAttemptText) {
+                    this.dom.hostWaitingAttemptText.textContent = `Oda devralınıyor (${data.attempt}/${data.maxAttempts})...`;
+                }
+                this.dom.hostWaitingOverlay.classList.add('active');
+            }
+        });
+
+        multiplayer.on('hostMigrationSuccess', (data) => {
+            console.log('Host migration başarılı! Artık bu istemci ev sahibi:', data.roomCode);
+            this.saveLiveSessionSnapshot();
+            this.startOpponentCountdown(
+                data.roomCode,
+                '👑 ARTIK EV SAHİBİ SİZSİNİZ!',
+                `Oda kontrolü başarıyla size devredildi!<br>Rakibinizin <strong>#${data.roomCode}</strong> koduyla odaya katılması bekleniyor...`
+            );
+        });
+
+        multiplayer.on('hostMigrationFailed', () => {
+            this.stopOpponentCountdown();
+            this.clearLiveSessionSnapshot();
+            multiplayer.disconnect();
+            this.switchScreen('mainMenu');
+            this.showNotice(
+                'ODA DEVRALINAMADI',
+                'Ev sahibi ayrıldı ve oda devri zaman aşımına uğradı. Ana menüye yönlendirildiniz.',
+                '❌'
+            );
+        });
+
+        // Rakibin Sayfayı Yenilediği / Kapattığı Anlık Bildirimi
+        multiplayer.on('PEER_LEAVING', () => {
             if (this.screens.match && this.screens.match.classList.contains('active') && this.currentRound < 11) {
                 if (!multiplayer.isHost && !multiplayer.isSpectator) {
-                    // Misafir tarafı: Ev sahibi sayfayı yeniledi veya koptu
-                    if (this.dom.hostWaitingOverlay) {
-                        this.dom.hostWaitingOverlay.classList.add('active');
-                        if (this.dom.hostWaitingAttemptText) {
-                            this.dom.hostWaitingAttemptText.textContent = 'Ev sahibine yeniden bağlanılıyor...';
-                        }
-                    }
-                    if (multiplayer.roomCode) {
-                        multiplayer.startAutoReconnect(multiplayer.roomCode);
-                    }
+                    // Misafir tarafı: Ev sahibi çıktı! Anında Host Devrini başlat!
+                    multiplayer.promoteToHost(multiplayer.roomCode, this.teams[this.myTeamKey].name);
                 } else if (multiplayer.isHost) {
-                    // Host tarafı: Misafir koptu
-                    this.showNotice(
-                        'MİSAFİR OYUNCU KOPTU',
-                        'Rakip oyuncunun bağlantısı geçici olarak koptu. Yeniden bağlanması bekleniyor...',
-                        '⏳'
+                    // Host tarafı: Misafir çıktı! 3 dakikalık bekleme sayacını başlat!
+                    this.startOpponentCountdown(
+                        multiplayer.roomCode,
+                        '⏳ RAKİP AYRILDI',
+                        `Rakip oyuncu sayfayı yeniledi veya ayrıldı.<br><strong>#${multiplayer.roomCode}</strong> koduyla tekrar katılması bekleniyor...`
                     );
                 }
             }
         });
 
-        multiplayer.on('reconnectAttempt', (data) => {
-            if (this.dom.hostWaitingAttemptText) {
-                this.dom.hostWaitingAttemptText.textContent = `Yeniden bağlanma deneniyor (${data.attempt}/${data.maxAttempts})...`;
+        // Bağlantı Kopması (Host veya Misafir Düşünce)
+        multiplayer.on('peerDisconnected', () => {
+            if (this.screens.match && this.screens.match.classList.contains('active') && this.currentRound < 11) {
+                if (!multiplayer.isHost && !multiplayer.isSpectator) {
+                    // Misafir tarafı: Ev sahibi koptu, odayı devral!
+                    multiplayer.promoteToHost(multiplayer.roomCode, this.teams[this.myTeamKey].name);
+                } else if (multiplayer.isHost) {
+                    // Host tarafı: Misafir koptu, 3 dakikalık geri sayımı başlat
+                    this.startOpponentCountdown(
+                        multiplayer.roomCode,
+                        '⏳ RAKİP OYUNCU KOPTU',
+                        `Rakip oyuncunun bağlantısı koptu.<br><strong>#${multiplayer.roomCode}</strong> koduyla tekrar katılması bekleniyor...`
+                    );
+                }
             }
         });
 
-        multiplayer.on('reconnectFailed', () => {
-            if (this.dom.hostWaitingAttemptText) {
-                this.dom.hostWaitingAttemptText.textContent = 'Bağlantı zaman aşımına uğradı.';
-            }
-            this.showNotice(
-                'BAĞLANTI KURULAMADI',
-                'Ev sahibine tekrar bağlanılamadı. Lütfen internet bağlantınızı kontrol edip ana menüye dönün.',
-                '❌'
-            );
+        // Rakip (veya eski host) odaya geri katıldı!
+        multiplayer.on('opponentReconnected', () => {
+            console.log('Rakip odaya bağlandı! Canlı maç durumu gönderiliyor...');
+            this.stopOpponentCountdown();
+            soundFX.btnClick();
+            this.showNotice('⚡ RAKİP ODAYA DÖNDÜ', 'Rakip oyuncu odaya tekrar bağlandı! Maç kaldığı yerden devam ediyor.', '🎮');
+
+            // Maç durumunu anında karşı tarafa gönder
+            multiplayer.send('RECONNECT_SYNC', {
+                teamA: this.teams.teamA,
+                teamB: this.teams.teamB,
+                currentRound: this.currentRound,
+                matchPositions: this.matchPositions,
+                roundCards: this.roundCards,
+                currentTurn: this.currentTurn,
+                firstPicker: this.firstPicker,
+                lockedPicks: this.lockedPicks,
+                blockedCardIndex: this.blockedCardIndex,
+                isRevealing: this.isRevealing
+            });
         });
 
         multiplayer.on('peerReconnected', () => {
             if (this.dom.hostWaitingAttemptText) {
                 this.dom.hostWaitingAttemptText.textContent = 'Bağlandı! Maç senkronize ediliyor...';
             }
+            this.stopOpponentCountdown();
         });
 
         // Rakip Oyuncu Maçtan Ayrıldı
@@ -726,6 +795,63 @@ class ScoutGame {
                 '🚪'
             );
         });
+    }
+
+    // ===================================================================
+    // RAKİP BEKLEME & 3 DAKİKALIK OTOMATİK SIFIRLAMA (0 OYUNCU KORUMASI)
+    // ===================================================================
+    startOpponentCountdown(roomCode, titleText, descHtml) {
+        this.stopOpponentCountdown();
+        this.isWaitingForOpponent = true;
+        this.opponentWaitSeconds = 180;
+
+        if (this.dom.hostWaitingOverlay) {
+            const titleEl = this.dom.hostWaitingOverlay.querySelector('.host-waiting-title');
+            const descEl = document.getElementById('hostWaitingDesc');
+            if (titleEl) titleEl.textContent = titleText || 'RAKİP BEKLENİYOR...';
+            if (descEl) descEl.innerHTML = descHtml || `Rakibinizin <strong>#${roomCode}</strong> koduyla odaya katılması bekleniyor...`;
+            if (this.dom.hostWaitingAttemptText) {
+                this.dom.hostWaitingAttemptText.textContent = '⏱️ Kalan Süre: 03:00';
+            }
+            this.dom.hostWaitingOverlay.classList.add('active');
+        }
+
+        this.opponentWaitTimer = setInterval(() => {
+            this.opponentWaitSeconds--;
+            const mins = Math.floor(this.opponentWaitSeconds / 60);
+            const secs = this.opponentWaitSeconds % 60;
+            const timeStr = `⏱️ Kalan Süre: 0${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+            if (this.dom.hostWaitingAttemptText) {
+                this.dom.hostWaitingAttemptText.textContent = timeStr;
+            }
+
+            if (this.opponentWaitSeconds <= 0) {
+                this.stopOpponentCountdown();
+                this.clearLiveSessionSnapshot();
+                if (multiplayer.roomCode) {
+                    multiplayer.unregisterRoom(multiplayer.roomCode);
+                }
+                multiplayer.disconnect();
+                this.switchScreen('mainMenu');
+                this.showNotice(
+                    'SÜRE DOLDU (3 DAKİKA)',
+                    'Bekleme süresi doldu ve odaya kimse dönmediği için maç ve tüm veriler tamamen sıfırlandı.',
+                    '⏱️'
+                );
+            }
+        }, 1000);
+    }
+
+    stopOpponentCountdown() {
+        if (this.opponentWaitTimer) {
+            clearInterval(this.opponentWaitTimer);
+            this.opponentWaitTimer = null;
+        }
+        this.isWaitingForOpponent = false;
+        if (this.dom.hostWaitingOverlay) {
+            this.dom.hostWaitingOverlay.classList.remove('active');
+        }
     }
 
     // Yazı Tura Başlangıcı
@@ -798,18 +924,67 @@ class ScoutGame {
         this.startPositionRound();
     }
 
+
     // ===================================================================
     // RESMİ LİG KAYITLARI & GEÇMİŞ SEZON KARTLARI
+    // ===================================================================
+    // DENGELİ VE GARANTİLİ 4 KART DAĞITIMI: 2 KÂR, 2 ZARAR
+    // (1 ÇOK KÂR, 1 HAFİF KÂR, 1 HAFİF ZARAR, 1 ÇOK ZARAR / TUZAK)
+    // GERÇEK TRANSFERMARKT VERİLERİ KORUNARAK HER TURDA DOĞAL VE ADİL DÜELLO
     // ===================================================================
     generateRoundCards(positionName) {
         const pool = this.database[positionName];
         if (!pool || pool.length < 4) return [];
 
-        // Her mevkide havuzdan TAMAMEN RASTGELE 4 kart seçimi
-        const selected = [...pool].sort(() => 0.5 - Math.random()).slice(0, 4);
+        const calcProfit = (player) => Math.round((player.guncel.deger - player.gecmis.deger) * 10) / 10;
 
-        return selected.map((player) => {
-            const profit = Math.round((player.guncel.deger - player.gecmis.deger) * 10) / 10;
+        // Pozitif kâr edenler ve zarar edenleri kesin olarak ikiye ayır
+        const karOyuncular = pool.filter(p => calcProfit(p) > 0).sort((a, b) => calcProfit(b) - calcProfit(a));
+        const zararOyuncular = pool.filter(p => calcProfit(p) <= 0).sort((a, b) => calcProfit(b) - calcProfit(a));
+
+        // Kâr grubunu: Çok Kâr ve Hafif Kâr olarak ikiye böl
+        const cokKarHavuzu = karOyuncular.slice(0, Math.ceil(karOyuncular.length / 2));
+        const hafifKarHavuzu = karOyuncular.slice(Math.ceil(karOyuncular.length / 2));
+
+        // Zarar grubunu: Hafif Zarar/Nötr ve Çok Zarar (Ağır Tuzak) olarak ikiye böl
+        const hafifZararHavuzu = zararOyuncular.slice(0, Math.ceil(zararOyuncular.length / 2));
+        const cokZararHavuzu = zararOyuncular.slice(Math.ceil(zararOyuncular.length / 2));
+
+        const pickRandom = (arr) => arr && arr.length > 0 ? arr[Math.floor(Math.random() * arr.length)] : null;
+
+        let card1 = pickRandom(cokKarHavuzu) || pickRandom(karOyuncular);
+        let card2 = pickRandom(hafifKarHavuzu) || pickRandom(karOyuncular);
+        let card3 = pickRandom(hafifZararHavuzu) || pickRandom(zararOyuncular);
+        let card4 = pickRandom(cokZararHavuzu) || pickRandom(zararOyuncular);
+
+        // Eğer card1 ile card2 aynı oyuncuya denk geldiyse diğerini seç
+        if (card1 && card2 && card1.id === card2.id) {
+            const others = karOyuncular.filter(p => p.id !== card1.id);
+            if (others.length > 0) card2 = pickRandom(others);
+        }
+
+        // Eğer card3 ile card4 aynı oyuncuya denk geldiyse diğerini seç
+        if (card3 && card4 && card3.id === card4.id) {
+            const others = zararOyuncular.filter(p => p.id !== card3.id);
+            if (others.length > 0) card4 = pickRandom(others);
+        }
+
+        const chosen = [card1, card2, card3, card4].filter(Boolean);
+        const uniqueChosen = Array.from(new Set(chosen));
+
+        // Eksik kalma durumunda havuzdan tamamla
+        while (uniqueChosen.length < 4) {
+            const extra = pool[Math.floor(Math.random() * pool.length)];
+            if (!uniqueChosen.some(p => p.id === extra.id)) {
+                uniqueChosen.push(extra);
+            }
+        }
+
+        // Kartların sırasını masada rastgele karıştır (böylece slot ezberi yapılamaz)
+        const shuffled = [...uniqueChosen].sort(() => 0.5 - Math.random());
+
+        return shuffled.map((player) => {
+            const profit = calcProfit(player);
             return {
                 ...player,
                 profit
@@ -1475,6 +1650,14 @@ class ScoutGame {
         this.showNotice('YAYINDAN AYRILDINIZ', 'Canlı maç izleme modundan çıkış yapıldı.', 'ℹ️');
     }
 
+    getShortName(fullName) {
+        if (!fullName) return '';
+        const parts = fullName.trim().split(' ');
+        if (parts.length <= 1) return fullName;
+        // Çift isimli veya soyadlı durumlarda sırt ismini al (örn: Alexander-Arnold, Donnarumma, Bellingham)
+        return parts.slice(1).join(' ');
+    }
+
     renderPitchNodes() {
         this.dom.pitchContainer.innerHTML = `
             <div class="pitch-line-center"></div>
@@ -1497,7 +1680,7 @@ class ScoutGame {
             if (player) {
                 node.innerHTML = `
                     <div class="player-pin">${coord.label}</div>
-                    <div class="player-tag">${player.gercek_isim}</div>
+                    <div class="player-tag" title="${player.gercek_isim}">${this.getShortName(player.gercek_isim)}</div>
                     <div class="player-profit-pill ${player.profit >= 0 ? 'gain' : 'loss'}">
                         ${player.profit >= 0 ? '+' : ''}${player.profit.toFixed(1)}M€
                     </div>
@@ -1514,10 +1697,19 @@ class ScoutGame {
     }
 
     endGame() {
+        soundFX.whistle(true);
+        this.dom.actionTipText.innerHTML = `⚽ <strong style="color:var(--primary-neon);">11 TRANSFER TAMAMLANDI! ŞAMPİYON BELİRLENİYOR...</strong>`;
+
+        setTimeout(() => {
+            this.showFinalCelebration();
+        }, 1500);
+    }
+
+    showFinalCelebration() {
         soundFX.crowdCheer();
 
         if (typeof confetti === 'function') {
-            confetti({ particleCount: 200, spread: 120, origin: { y: 0.6 } });
+            confetti({ particleCount: 220, spread: 130, origin: { y: 0.6 } });
         }
 
         const aProfit = this.teams.teamA.totalProfit;
@@ -1529,13 +1721,23 @@ class ScoutGame {
         } else if (bProfit > aProfit) {
             winnerText = `🏆 ŞAMPİYON: ${this.teams.teamB.name.toUpperCase()}!`;
         } else {
-            winnerText = `🤝 DOSTLUK KAZANDI: BERABERE!`;
+            // Kârlar eşitse toplam kadro değerine bak
+            const aVal = this.teams.teamA.totalValue;
+            const bVal = this.teams.teamB.totalValue;
+            if (aVal > bVal) {
+                winnerText = `🏆 KADRO DEĞERİYLE ŞAMPİYON: ${this.teams.teamA.name.toUpperCase()}!`;
+            } else if (bVal > aVal) {
+                winnerText = `🏆 KADRO DEĞERİYLE ŞAMPİYON: ${this.teams.teamB.name.toUpperCase()}!`;
+            } else {
+                winnerText = `🤝 DOSTLUK KAZANDI: BERABERE!`;
+            }
         }
 
         document.getElementById('winnerTeamTitle').textContent = winnerText;
+
         document.getElementById('finalScoreSummary').innerHTML = `
-            <strong>${this.teams.teamA.name}:</strong> ${aProfit.toFixed(1)} M€ Net Kâr | Toplam Değer: ${this.teams.teamA.totalValue.toFixed(1)} M€<br>
-            <strong>${this.teams.teamB.name}:</strong> ${bProfit.toFixed(1)} M€ Net Kâr | Toplam Değer: ${this.teams.teamB.totalValue.toFixed(1)} M€
+            <strong>${this.teams.teamA.name}:</strong> ${aProfit.toFixed(1)} M€ Net Kâr | Toplam Kadro Değeri: ${this.teams.teamA.totalValue.toFixed(1)} M€<br>
+            <strong>${this.teams.teamB.name}:</strong> ${bProfit.toFixed(1)} M€ Net Kâr | Toplam Kadro Değeri: ${this.teams.teamB.totalValue.toFixed(1)} M€
         `;
 
         const allTransfers = [
@@ -1560,6 +1762,7 @@ class ScoutGame {
         if (this.gameMode === 'online' && multiplayer.isHost && multiplayer.roomCode) {
             multiplayer.unregisterRoom(multiplayer.roomCode);
         }
+
         this.modals.winner.classList.add('active');
     }
 
@@ -1610,8 +1813,9 @@ class ScoutGame {
             if (!raw) return;
             const data = JSON.parse(raw);
 
-            // 3 saatten eski oturumları temizle
-            if (!data || (Date.now() - (data.timestamp || 0)) > 3 * 60 * 60 * 1000) {
+            // 3 DAKİKADAN eski oturumları anında sil (Kullanıcının 3 dakika ve 0 oyuncu kuralı!)
+            if (!data || (Date.now() - (data.timestamp || 0)) > 3 * 60 * 1000) {
+                console.log('3 dakikadan eski oturum tespit edildi ve temizlendi.');
                 this.clearLiveSessionSnapshot();
                 return;
             }
@@ -1629,7 +1833,7 @@ class ScoutGame {
                     teamsVs.textContent = `${data.teams.teamA.name} vs ${data.teams.teamB.name}`;
                 }
                 if (roundStatus) {
-                    const posName = data.matchPositions && data.matchPositions[data.currentRound] ? (POSITION_NAMES[data.matchPositions[data.currentRound]] || data.matchPositions[data.currentRound]) : 'Aktif Tur';
+                    const posName = data.matchPositions && data.matchPositions[data.currentRound] ? data.matchPositions[data.currentRound] : 'Aktif Tur';
                     roundStatus.textContent = `Mevki ${data.currentRound + 1} / 11 • ${posName}`;
                 }
 
@@ -1639,6 +1843,7 @@ class ScoutGame {
             }
         } catch (e) {
             console.warn('Oturum kurtarma verisi okunamadı:', e);
+            this.clearLiveSessionSnapshot();
         }
     }
 
@@ -1676,22 +1881,16 @@ class ScoutGame {
             this.renderRound();
             this.renderPitchNodes();
 
-            // Eğer Online Mod ise ve Host ise: Odayı aynı kodla geri al!
-            if (this.gameMode === 'online' && data.isHost && data.roomCode) {
+            // Eğer Online Mod ise: Akıllı odaya dönüş (Rejoin)
+            if (this.gameMode === 'online' && data.roomCode) {
                 this.showNotice(
-                    '👑 ODA GERİ ALINIYOR',
-                    `Oda <strong>#${data.roomCode}</strong> tekrar talep ediliyor. Misafirinizin yeniden bağlanması bekleniyor...`,
-                    '🔄'
+                    '🔄 ODAYA DÖNÜLÜYOR',
+                    `Oda <strong>#${data.roomCode}</strong> kontrol ediliyor. Diğer oyuncuyla bağlantı kuruluyor...`,
+                    '⚡'
                 );
-                multiplayer.reclaimRoom(data.roomCode, this.teams.teamA.name);
-            } else if (this.gameMode === 'online' && !data.isHost && data.roomCode) {
-                // Misafir ise otomatik yeniden bağlanmayı başlat
-                if (this.dom.hostWaitingOverlay) {
-                    this.dom.hostWaitingOverlay.classList.add('active');
-                }
-                multiplayer.startAutoReconnect(data.roomCode);
+                multiplayer.rejoinRoom(data.roomCode, this.teams[this.myTeamKey] ? this.teams[this.myTeamKey].name : 'Oyuncu');
             } else {
-                soundFX.whistle();
+                soundFX.btnClick();
             }
         } catch (e) {
             console.error('Oturum kurtarma hatası:', e);
@@ -1701,8 +1900,9 @@ class ScoutGame {
     }
 
     discardLiveSession() {
+        this.stopOpponentCountdown();
         this.clearLiveSessionSnapshot();
-        if (multiplayer.isHost && multiplayer.roomCode) {
+        if (multiplayer.roomCode) {
             multiplayer.unregisterRoom(multiplayer.roomCode);
         }
         if (this.modals.resumeSession) {
@@ -1716,13 +1916,14 @@ class ScoutGame {
     }
 
     abandonMatch() {
+        this.stopOpponentCountdown();
         if (this.gameMode === 'online') {
             multiplayer.send('MATCH_ABANDONED', {
                 by: multiplayer.isHost ? 'host' : 'guest',
                 teamName: this.teams[this.myTeamKey] ? this.teams[this.myTeamKey].name : 'Oyuncu'
             });
 
-            if (multiplayer.isHost && multiplayer.roomCode) {
+            if (multiplayer.roomCode) {
                 multiplayer.unregisterRoom(multiplayer.roomCode);
             }
         }

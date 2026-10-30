@@ -1,5 +1,5 @@
 // ===================================================================
-// PeerJS Tabanlı P2P Çok Oyunculu & İzleyici (Spectator) Motoru
+// PeerJS Tabanlı P2P Çok Oyunculu & Dinamik Ev Sahibi Devri (Host Migration)
 // ===================================================================
 
 class MultiplayerManager {
@@ -14,6 +14,9 @@ class MultiplayerManager {
         this.callbacks = {};
         this.connected = false;
         this.heartbeatTimer = null;
+        this.reconnectTimer = null;
+        this.isReconnecting = false;
+        this.isMigrating = false;
     }
 
     on(event, callback) {
@@ -93,7 +96,103 @@ class MultiplayerManager {
     }
 
     // ===================================================================
-    // 1.1 HOST SAYFA YENİLEME SONRASI AYNI ODAYI GERİ AL (RECLAIM)
+    // 1.1 DİNAMİK EV SAHİBİ DEVRİ (HOST MIGRATION)
+    // Ev sahibi ayrıldığında misafir bu fonksiyonla odanın yeni resmi Host'u olur!
+    // ===================================================================
+    promoteToHost(roomCode, hostTeamName = 'Ev Sahibi', attempt = 1) {
+        this.stopAutoReconnect();
+        this.isMigrating = true;
+
+        if (this.conn) {
+            try { this.conn.close(); } catch (e) {}
+            this.conn = null;
+        }
+        if (this.playerConn) {
+            try { this.playerConn.close(); } catch (e) {}
+            this.playerConn = null;
+        }
+        if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+            this.peer = null;
+        }
+
+        const cleanCode = roomCode.toString().trim();
+        const peerId = `scout-game-${cleanCode}`;
+        this.isHost = true;
+        this.isSpectator = false;
+        this.roomCode = cleanCode;
+        this.spectatorConns = [];
+
+        const maxAttempts = 20;
+        this.emit('hostMigrationAttempt', { roomCode: cleanCode, attempt, maxAttempts });
+
+        try {
+            this.peer = new Peer(peerId, { debug: 1 });
+
+            this.peer.on('open', (id) => {
+                this.isMigrating = false;
+                console.log(`[Host Migration] Oda #${cleanCode} kontrolü başarıyla devralındı! Peer ID: ${id}`);
+                this.registerRoom({
+                    code: this.roomCode,
+                    host: hostTeamName,
+                    guest: '',
+                    status: 'Canlı Maç (Devralındı)',
+                    round: 1
+                });
+                this.startRoomHeartbeat(this.roomCode, hostTeamName);
+                this.emit('hostMigrationSuccess', { roomCode: this.roomCode, peerId: id });
+            });
+
+            this.peer.on('connection', (connection) => {
+                const isSpectator = connection.metadata && connection.metadata.isSpectator;
+
+                if (isSpectator) {
+                    connection.on('open', () => {
+                        this.spectatorConns.push(connection);
+                        this.emit('spectatorConnected', { connection, count: this.spectatorConns.length });
+                    });
+
+                    connection.on('close', () => {
+                        this.spectatorConns = this.spectatorConns.filter(c => c !== connection);
+                        this.emit('spectatorCountChanged', { count: this.spectatorConns.length });
+                    });
+                } else {
+                    // Rakip oyuncu odaya katıldı / geri döndü!
+                    this.conn = connection;
+                    this.playerConn = connection;
+                    this.setupPlayerConnection(connection);
+                    this.emit('opponentReconnected', { connection, roomCode: this.roomCode });
+                }
+            });
+
+            this.peer.on('error', (err) => {
+                console.warn(`[Host Migration] Odayı devralma denemesi #${attempt} sonuç:`, err);
+                if (err.type === 'unavailable-id') {
+                    // Eski host'un soketinin PeerJS broker'ından düşmesi 2-3 saniye sürebilir
+                    if (attempt < maxAttempts && this.isMigrating) {
+                        setTimeout(() => {
+                            if (this.isMigrating) {
+                                this.promoteToHost(cleanCode, hostTeamName, attempt + 1);
+                            }
+                        }, 1500);
+                    } else {
+                        this.isMigrating = false;
+                        this.emit('hostMigrationFailed', { message: 'Oda devralınamadı (Zaman aşımı).' });
+                    }
+                } else {
+                    this.isMigrating = false;
+                    this.emit('error', err);
+                }
+            });
+        } catch (e) {
+            console.error('Host migration başlatılırken hata:', e);
+            this.isMigrating = false;
+            this.emit('hostMigrationFailed', { message: e.message });
+        }
+    }
+
+    // ===================================================================
+    // 1.2 HOST SAYFA YENİLEME SONRASI AYNI ODAYI GERİ AL (RECLAIM)
     // ===================================================================
     reclaimRoom(roomCode, hostTeamName = 'Dharma', attempt = 1) {
         if (this.peer) {
@@ -144,13 +243,13 @@ class MultiplayerManager {
                     this.conn = connection;
                     this.playerConn = connection;
                     this.setupPlayerConnection(connection);
+                    this.emit('opponentReconnected', { connection, roomCode: this.roomCode });
                 }
             });
 
             this.peer.on('error', (err) => {
                 console.warn(`[Host] Odayı geri alma denemesi #${attempt} sonuç:`, err);
                 if (err.type === 'unavailable-id') {
-                    // PeerJS sunucusu eski soketin düştüğünü birkaç saniyede anlar, 2 sn sonra aynı kodla tekrar dene!
                     if (attempt < 15) {
                         setTimeout(() => {
                             this.reclaimRoom(cleanCode, hostTeamName, attempt + 1);
@@ -166,6 +265,62 @@ class MultiplayerManager {
             console.error('Oda geri alınırken hata:', e);
             this.emit('error', e);
         }
+    }
+
+    // ===================================================================
+    // 1.3 AKILLI ODAYA YENİDEN GİRİŞ (REJOIN ROOM)
+    // İster eski Host ister Misafir olsun: Önce odaya misafir olarak bağlanmayı dener.
+    // Eğer diğer oyuncu odayı devralıp Host olmuşsa anında ona bağlanır.
+    // Eğer odada kimse yoksa ve boşsa, odayı kendisi Host olarak devralır!
+    // ===================================================================
+    rejoinRoom(roomCode, teamName = 'Oyuncu') {
+        const cleanCode = roomCode.toString().trim();
+        const hostPeerId = `scout-game-${cleanCode}`;
+        this.roomCode = cleanCode;
+
+        if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+        }
+
+        this.peer = new Peer({ debug: 1 });
+
+        let resolved = false;
+
+        this.peer.on('open', () => {
+            const connection = this.peer.connect(hostPeerId, {
+                reliable: true,
+                metadata: { isSpectator: false, isReconnecting: true }
+            });
+
+            connection.on('open', () => {
+                if (resolved) return;
+                resolved = true;
+                this.isHost = false;
+                this.isSpectator = false;
+                this.conn = connection;
+                this.setupPlayerConnection(connection);
+                this.emit('peerReconnected', { roomCode: cleanCode });
+            });
+
+            // 3 saniye içinde Host'a bağlanamazsa, demek ki diğer oyuncu henüz Host olmamış veya koptu.
+            // Bu durumda odayı biz Host olarak devralalım!
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    console.log(`[Rejoin] Odada aktif Host bulunamadı, odayı Host olarak talep ediyoruz...`);
+                    try { connection.close(); } catch (e) {}
+                    this.promoteToHost(cleanCode, teamName);
+                }
+            }, 3000);
+        });
+
+        this.peer.on('error', (err) => {
+            if (!resolved) {
+                resolved = true;
+                console.log(`[Rejoin] Misafir olarak bağlanılamadı, Host devri başlatılıyor...`, err);
+                this.promoteToHost(cleanCode, teamName);
+            }
+        });
     }
 
     // ===================================================================
@@ -248,7 +403,7 @@ class MultiplayerManager {
 
         connection.on('close', () => {
             this.connected = false;
-            this.emit('peerDisconnected', {});
+            this.emit('peerDisconnected', { isHost: this.isHost, roomCode: this.roomCode });
         });
 
         connection.on('error', (err) => {
@@ -284,15 +439,27 @@ class MultiplayerManager {
     // MESAJ VE AKSİYON GÖNDERME
     // ===================================================================
     send(action, payload = {}) {
-        // Misafir oyuncuya gönder
         const target = this.isHost ? this.playerConn : this.conn;
         if (target && target.open) {
-            target.send({ action, payload });
+            try {
+                target.send({ action, payload });
+            } catch (e) {
+                console.warn('Veri gönderilemedi:', e);
+            }
         }
 
         // Host ise izleyicilere de anında dağıt (broadcast)
         if (this.isHost) {
             this.broadcastToSpectators(action, payload);
+        }
+    }
+
+    // Sayfa kapanırken veya yenilenirken karşı tarafa anında haber ver
+    sendLeavingNotice() {
+        if (this.connected) {
+            try {
+                this.send('PEER_LEAVING', { isHost: this.isHost, roomCode: this.roomCode });
+            } catch (e) {}
         }
     }
 
@@ -314,7 +481,6 @@ class MultiplayerManager {
         try {
             const list = JSON.parse(localStorage.getItem('scout_active_rooms') || '[]');
             const now = Date.now();
-            // 10 dakikadan eski odaları at ve en fazla 5 odayı tut
             const fresh = list.filter(r => (now - (r.updatedAt || 0)) < 10 * 60 * 1000).slice(0, 5);
             localStorage.setItem('scout_active_rooms', JSON.stringify(fresh));
             return fresh;
@@ -324,7 +490,6 @@ class MultiplayerManager {
     }
 
     async registerRoom(roomData) {
-        // 1. Yerel Depolama (Maksimum 5 taze oda, 10 dk ömür)
         try {
             const list = this.cleanExpiredRooms();
             const filtered = list.filter(r => r.code !== roomData.code);
@@ -332,7 +497,6 @@ class MultiplayerManager {
             localStorage.setItem('scout_active_rooms', JSON.stringify(filtered.slice(0, 5)));
         } catch (e) {}
 
-        // 2. Sunucu API Kaydı (Çalışıyorsa)
         try {
             await fetch('/api/rooms', {
                 method: 'POST',
@@ -347,21 +511,18 @@ class MultiplayerManager {
         this.stopRoomHeartbeat();
         const codeStr = roomCode.toString().trim();
 
-        // 1. localStorage'dan anında sil
         try {
             const list = JSON.parse(localStorage.getItem('scout_active_rooms') || '[]');
             const filtered = list.filter(r => r.code !== codeStr);
             localStorage.setItem('scout_active_rooms', JSON.stringify(filtered));
         } catch (e) {}
 
-        // 2. Canlı sunucu API'sinden sil
         try {
             await fetch(`/api/rooms/${codeStr}`, { method: 'DELETE' });
         } catch (e) {}
     }
 
     async getActiveRooms() {
-        // 1. Önce canlı sunucu API'sini dene
         try {
             const res = await fetch('/api/rooms');
             if (res.ok) {
@@ -372,7 +533,6 @@ class MultiplayerManager {
             }
         } catch (e) {}
 
-        // 2. Sunucu yoksa veya Netlify statik moddaysa temizlenmiş localStorage'dan oku
         return this.cleanExpiredRooms();
     }
 
@@ -388,7 +548,7 @@ class MultiplayerManager {
                     round: 1
                 });
             }
-        }, 30000); // 30 saniyede bir odayı güncelle
+        }, 30000);
     }
 
     stopRoomHeartbeat() {
@@ -473,16 +633,30 @@ class MultiplayerManager {
     }
 
     disconnect() {
+        this.isMigrating = false;
         this.stopRoomHeartbeat();
         this.stopAutoReconnect();
-        if (this.conn) this.conn.close();
-        if (this.playerConn) this.playerConn.close();
-        this.spectatorConns.forEach(c => c.close());
+        if (this.conn) {
+            try { this.conn.close(); } catch (e) {}
+            this.conn = null;
+        }
+        if (this.playerConn) {
+            try { this.playerConn.close(); } catch (e) {}
+            this.playerConn = null;
+        }
+        this.spectatorConns.forEach(c => {
+            try { c.close(); } catch (e) {}
+        });
         this.spectatorConns = [];
-        if (this.peer) this.peer.destroy();
+        if (this.peer) {
+            try { this.peer.destroy(); } catch (e) {}
+            this.peer = null;
+        }
         this.connected = false;
+        this.isHost = false;
+        this.isSpectator = false;
+        this.roomCode = null;
     }
 }
 
 const multiplayer = new MultiplayerManager();
-
